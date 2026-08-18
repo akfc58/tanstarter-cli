@@ -1,4 +1,6 @@
 export type PaymentProvider = 'none' | 'waffo';
+/** Site tier of the generated project. Mirrors the template's PresetName. */
+export type PresetName = 'free' | 'account' | 'full';
 export type WaffoProductType = 'onetime' | 'subscription';
 export type WaffoBillingPeriod = 'monthly' | 'yearly';
 export type WaffoProductSlot = 'lifetime' | 'proMonthly' | 'proYearly';
@@ -16,6 +18,7 @@ export interface CliOptions {
   domain: string;
   githubRepo?: string;
   payment?: PaymentProvider;
+  preset?: PresetName;
   resume: boolean;
 }
 
@@ -33,6 +36,7 @@ export interface RuntimeConfig {
   r2BucketName: string;
   kvNamespaceName: string;
   kvNamespaceId: string;
+  preset: PresetName;
   paymentProvider: PaymentProvider;
   waffoSetupId: string;
   waffoMerchantId: string;

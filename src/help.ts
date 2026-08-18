@@ -13,6 +13,8 @@ Options:
   --repo <owner/name>     Create or use this GitHub repo
   --domain <domain>       Cloudflare custom domain route
   --payment <none|waffo>  Payment method for the generated project
+  --preset <free|account|full>
+                          Site tier of the generated project (default: full)
   --resume                Resume a failed setup with tanstarter create <project-name> --resume
   -h, --help              Show help
   -v, --version           Show version

@@ -2,9 +2,9 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { printHelp, printVersion } from './help.js';
-import type { CliOptions, PaymentProvider } from './types.js';
+import type { CliOptions, PaymentProvider, PresetName } from './types.js';
 import { requireValue } from './utils.js';
-import { normalizeSlug, validateSlug } from './validators.js';
+import { normalizeSlug, parsePreset, validateSlug } from './validators.js';
 
 export function parseArgs(args: string[]): CliOptions {
   let command: CliOptions['command'] | undefined;
@@ -12,6 +12,7 @@ export function parseArgs(args: string[]): CliOptions {
   let domain = '';
   let githubRepo: string | undefined;
   let payment: PaymentProvider | undefined;
+  let preset: PresetName | undefined;
   let resume = false;
 
   for (let index = 0; index < args.length; index++) {
@@ -68,6 +69,14 @@ export function parseArgs(args: string[]): CliOptions {
       payment = parsePaymentProvider(arg.slice('--payment='.length));
       continue;
     }
+    if (arg === '--preset') {
+      preset = parsePreset(requireValue(args, ++index, '--preset'));
+      continue;
+    }
+    if (arg.startsWith('--preset=')) {
+      preset = parsePreset(arg.slice('--preset='.length));
+      continue;
+    }
     if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -106,6 +115,7 @@ export function parseArgs(args: string[]): CliOptions {
     domain,
     ...(githubRepo ? { githubRepo } : {}),
     ...(payment ? { payment } : {}),
+    ...(preset ? { preset } : {}),
     resume,
   };
 }

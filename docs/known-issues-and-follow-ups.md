@@ -1,6 +1,12 @@
 # 已知问题与后续事项
 
-更新时间：2026-07-29
+更新时间：2026-08-18
+
+## 待办
+
+### `--preset free` 尚未实跑一次真实部署
+
+契约 `tanstack-template/docs/superpowers/plans/2026-08-12-cli-preset-contract.md` 第 4 节要求 `--preset free` 必须实跑一次真实部署，确认 worker 能启动、`/` 与 `/blog` 返回 200。原因是 `free` 是唯一把 auth 整个关掉的档位。CLI 侧已完成单测与错误路径验证。这条实跑会真实创建 Cloudflare 资源和 GitHub 仓库，安排在 PR #3 合并之后，由用户与 Claude 一起执行，验完用 `tanstarter delete` 清理。
 
 ## 低危遗留（已评估，暂不修复）
 
