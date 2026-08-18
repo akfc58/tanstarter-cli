@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -23,9 +24,10 @@ import { getPublicBaseUrl, verifyPublicDeployment } from '../src/deployment.ts';
 import { initializeGit } from '../src/git.ts';
 import { isCliEntrypoint } from '../src/index.ts';
 import { getInstallPlan } from '../src/preflight.ts';
-import { formatDefaultGithubRepo } from '../src/prompt.ts';
+import { configureSetup, formatDefaultGithubRepo } from '../src/prompt.ts';
 import { readExistingState, writeState } from '../src/state.ts';
-import type { RuntimeConfig } from '../src/types.ts';
+import { writePresetConfig } from '../src/template.ts';
+import type { CliOptions, RuntimeConfig } from '../src/types.ts';
 import {
   normalizeSlug,
   normalizeDomain,
@@ -63,6 +65,7 @@ function createTestConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig
     r2BucketName: 'demo-app-bucket',
     kvNamespaceName: 'demo-app-kv',
     kvNamespaceId: '0123456789abcdef0123456789abcdef',
+    preset: 'full',
     paymentProvider: 'none',
     waffoSetupId: 'setup-test-id',
     waffoMerchantId: '',
@@ -153,6 +156,19 @@ describe('parseArgs', () => {
     });
     expect(() => parseArgs(['create', 'demo-app', '--payment', 'stripe'])).toThrow(
       '--payment must be none or waffo.'
+    );
+  });
+
+  it('parses the preset option and rejects invalid values', () => {
+    expect(parseArgs(['create', 'demo-app', '--preset', 'free'])).toMatchObject({
+      preset: 'free',
+    });
+    expect(parseArgs(['create', 'demo-app', '--preset=account'])).toMatchObject({
+      preset: 'account',
+    });
+    expect(parseArgs(['create', 'demo-app'])).not.toHaveProperty('preset');
+    expect(() => parseArgs(['create', 'demo-app', '--preset', 'pro'])).toThrow(
+      'Preset must be one of: free, account, full.'
     );
   });
 
@@ -615,6 +631,18 @@ describe('setup state', () => {
     expect(raw).toContain('"waffoPrivateKey": ""');
     expect(JSON.parse(raw).config.waffoMerchantId).toBe('MER_test');
   });
+
+  it('persists the preset so --resume and delete see the same tier', () => {
+    const config = createTestConfig({ preset: 'free' });
+
+    writeState(config.targetDir, {
+      completedSteps: [],
+      config,
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(readExistingState(config.targetDir).config.preset).toBe('free');
+  });
 });
 
 describe('install planning', () => {
@@ -726,6 +754,226 @@ describe('createConfig with Waffo payment', () => {
     );
 
     expect(config.waffoPrivateKey).toBe('waffo-private-key-value');
+  });
+});
+
+describe('setup prompts for presets', () => {
+  async function runConfigureSetup(
+    options: Partial<CliOptions>,
+    config: RuntimeConfig,
+    answers: string[]
+  ): Promise<{ config: RuntimeConfig; output: string }> {
+    const stdin = Object.assign(new PassThrough(), { isTTY: true });
+    const originalStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', {
+      value: stdin,
+      configurable: true,
+    });
+
+    const chunks: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args: unknown[]) => {
+        chunks.push(args.join(' '));
+      });
+    // Answer one prompt at a time. Readline drops line events that arrive
+    // while no question is pending, so the whole script cannot be written
+    // up front.
+    const pending = [...answers];
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(((chunk: unknown) => {
+        const text = String(chunk);
+        chunks.push(text);
+        if (text.trimEnd().endsWith(':') && pending.length > 0) {
+          setImmediate(() => stdin.write(`${pending.shift()}\n`));
+        }
+        return true;
+      }) as typeof process.stdout.write);
+
+    try {
+      const next = await configureSetup(
+        {
+          command: 'create',
+          projectName: config.projectName,
+          targetDir: config.targetDir,
+          // Both are supplied so the flow never shells out to GitHub CLI.
+          domain: 'demo.example.com',
+          githubRepo: 'demo-owner/demo-app',
+          resume: false,
+          ...options,
+        } as CliOptions,
+        config
+      );
+      return { config: next, output: chunks.join('\n') };
+    } finally {
+      logSpy.mockRestore();
+      writeSpy.mockRestore();
+      Object.defineProperty(process, 'stdin', originalStdin);
+      stdin.end();
+    }
+  }
+
+  it('asks for the preset and skips the payment question on free', async () => {
+    const { config, output } = await runConfigureSetup(
+      {},
+      createTestConfig({ domain: 'demo.example.com' }),
+      ['free', '', '', '', '']
+    );
+
+    expect(config.preset).toBe('free');
+    expect(config.paymentProvider).toBe('none');
+    expect(output).toContain('Preset (free/account/full, default: full):');
+    expect(output).not.toContain('Payment method');
+  });
+
+  it('defaults to full on an empty answer and still asks for payment', async () => {
+    const { config, output } = await runConfigureSetup(
+      {},
+      createTestConfig({ domain: 'demo.example.com' }),
+      ['', 'none', '', '', '', '']
+    );
+
+    expect(config.preset).toBe('full');
+    expect(output).toContain('Payment method');
+  });
+
+  it('re-asks after an invalid preset answer', async () => {
+    const { config, output } = await runConfigureSetup(
+      {},
+      createTestConfig({ domain: 'demo.example.com' }),
+      ['pro', 'account', 'none', '', '', '', '']
+    );
+
+    expect(config.preset).toBe('account');
+    expect(output).toContain('Preset must be one of: free, account, full.');
+  });
+
+  it('rejects a free answer that contradicts an explicit --payment', async () => {
+    await expect(
+      runConfigureSetup(
+        { payment: 'waffo' },
+        createTestConfig({
+          domain: 'demo.example.com',
+          paymentProvider: 'waffo',
+        }),
+        ['free', '', '', '', '']
+      )
+    ).rejects.toThrow('The free preset does not support payment');
+  });
+});
+
+describe('createConfig with presets', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function stubCloudflareEnv(): void {
+    vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-id');
+    vi.stubEnv('CLOUDFLARE_API_TOKEN', 'api-token');
+  }
+
+  it('defaults to the full preset so existing commands are unchanged', () => {
+    stubCloudflareEnv();
+
+    expect(createConfig(parseArgs(['create', 'demo-app'])).preset).toBe('full');
+  });
+
+  it('carries the selected preset into the runtime config', () => {
+    stubCloudflareEnv();
+
+    expect(
+      createConfig(parseArgs(['create', 'demo-app', '--preset', 'free'])).preset
+    ).toBe('free');
+  });
+
+  it('rejects payment on the free preset instead of ignoring it', () => {
+    stubCloudflareEnv();
+    vi.stubEnv('WAFFO_MERCHANT_ID', 'MER_test');
+    vi.stubEnv('WAFFO_PRIVATE_KEY', 'key');
+
+    expect(() =>
+      createConfig(
+        parseArgs(['create', 'demo-app', '--preset', 'free', '--payment', 'waffo'])
+      )
+    ).toThrow('The free preset does not support payment');
+  });
+
+  it('allows the account preset without a payment provider', () => {
+    stubCloudflareEnv();
+
+    const config = createConfig(
+      parseArgs(['create', 'demo-app', '--preset', 'account'])
+    );
+    expect(config.preset).toBe('account');
+    expect(config.paymentProvider).toBe('none');
+  });
+});
+
+describe('preset file writing', () => {
+  const PRESET_SOURCE = [
+    "export type PresetName = 'free' | 'account' | 'full';",
+    '',
+    '/** The active tier. This is the one line to change after cloning. */',
+    "export const ACTIVE_PRESET: PresetName = 'full';",
+    '',
+    'export const preset: PresetFlags = PRESETS[ACTIVE_PRESET];',
+    '',
+  ].join('\n');
+
+  function seedPresetFile(targetDir: string, source: string): string {
+    const presetPath = path.join(targetDir, 'src', 'config', 'preset.ts');
+    fs.mkdirSync(path.dirname(presetPath), { recursive: true });
+    fs.writeFileSync(presetPath, source, 'utf8');
+    return presetPath;
+  }
+
+  it('replaces only the ACTIVE_PRESET literal and leaves the rest intact', () => {
+    const config = createTestConfig({ preset: 'free' });
+    const presetPath = seedPresetFile(config.targetDir, PRESET_SOURCE);
+
+    writePresetConfig(config);
+
+    const written = fs.readFileSync(presetPath, 'utf8');
+    expect(written).toContain("export const ACTIVE_PRESET: PresetName = 'free';");
+    expect(written).toBe(
+      PRESET_SOURCE.replace(
+        "ACTIVE_PRESET: PresetName = 'full';",
+        "ACTIVE_PRESET: PresetName = 'free';"
+      )
+    );
+  });
+
+  it('is idempotent, so --resume rewrites the same value', () => {
+    const config = createTestConfig({ preset: 'account' });
+    const presetPath = seedPresetFile(config.targetDir, PRESET_SOURCE);
+
+    writePresetConfig(config);
+    writePresetConfig(config);
+
+    expect(fs.readFileSync(presetPath, 'utf8')).toContain(
+      "export const ACTIVE_PRESET: PresetName = 'account';"
+    );
+  });
+
+  it('fails loudly when the template predates the preset layer', () => {
+    const config = createTestConfig({ preset: 'free' });
+
+    expect(() => writePresetConfig(config)).toThrow(
+      'The cloned template predates the preset layer'
+    );
+  });
+
+  it('fails loudly when the declaration no longer matches', () => {
+    const config = createTestConfig({ preset: 'free' });
+    seedPresetFile(
+      config.targetDir,
+      'export const ACTIVE_PRESET = "full" as PresetName;\n'
+    );
+
+    expect(() => writePresetConfig(config)).toThrow(
+      'Could not find the ACTIVE_PRESET declaration'
+    );
   });
 });
 

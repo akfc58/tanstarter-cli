@@ -31,7 +31,7 @@ export WAFFO_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
 npx tanstarter-cli@latest create
 ```
 
-TanStarter CLI 会在真正创建资源之前询问项目名称、资源名称和支付方式。选择 Waffo 后，它会自动创建 Waffo 门店、模板内置的三个产品和 Webhook。
+TanStarter CLI 会在真正创建资源之前询问项目名称、档位、资源名称和支付方式。选择 Waffo 后，它会自动创建 Waffo 门店、模板内置的三个产品和 Webhook。
 
 
 ## 安装
@@ -87,6 +87,7 @@ tanstarter create <project-name> --resume
 
 - `--domain <domain>`：配置 Cloudflare 自定义域名路由。
 - `--payment <none|waffo>`：生成项目的支付方式。选择 `waffo` 时，CLI 使用模板内置的月付、年付和一次性产品，并在初始化过程中自动创建 Waffo 门店、产品和 Webhook。
+- `--preset <free|account|full>`：生成项目的站点档位，默认 `full`。在交互式终端中省略该参数时 CLI 会提问，直接回车即 `full`。详见 [档位](#档位)。
 - `--repo <owner/name>`：创建指定的 GitHub 仓库。如果省略，TanStarter CLI 会默认使用当前 GitHub CLI 登录账号和项目名，例如 `open-fox/my-app`。
 - `--resume`：从 `.tanstarter/state.json` 继续一次失败的初始化流程。
 - `-h, --help`：显示帮助信息。
@@ -109,6 +110,21 @@ tanstarter create my-app --resume
 ```bash
 tanstarter delete my-app
 ```
+
+## 档位
+
+档位决定生成的站点需要开通哪些第三方账号。CLI 会把它写进项目的 `src/config/preset.ts`（`ACTIVE_PRESET` 常量）；之后想换档位，改这一行再重新部署即可。
+
+| 档位 | 需要的第三方账号 | 得到什么 |
+| --- | --- | --- |
+| `free` | 不需要任何注册 | blog、about，以及你在此之上做的工具站或游戏站。`git push` 即上站。 |
+| `account` | 邮件服务账号（auth 的硬依赖）；要收钱再加支付商 | 账号体系、账单、文件存储。 |
+| `full` | 在上一档基础上再加 newsletter 账号和通知 webhook | 全部能力。 |
+
+- **三档的 Cloudflare 资源完全一致。** 每一档都会创建 D1、R2、KV 并执行迁移，因为 Worker 启动就需要这三个 binding。所以 `free` 档同样会持有三个资源，闲置时都在免费额度内，不用不计费。`delete` 也不分档位，三个资源全删。
+- **`free` 档拒绝支付。** `--preset free --payment waffo` 会直接报错退出，而不是静默忽略：`free` 关闭了账号体系，订阅和账单没有落点。
+- **`account` / `full` 可以不选支付商。** 此时 `VITE_PAYMENT_PROVIDER` 留空，得到「有账号但暂不收钱」的站点，定价页、账单页和支付 webhook 都不生效。
+- **模板必须带 preset 层。** 如果克隆下来的模板没有 `src/config/preset.ts`，或者其中的 `ACTIVE_PRESET` 声明形状已改变，CLI 会在克隆完成后立刻报错，此时还没有创建任何 Cloudflare 资源。
 
 ## 前置要求
 
@@ -138,7 +154,7 @@ Waffo 仍可能要求在控制台完成商户验证、企业资料和收款账�
 
 初始化流程：
 
-1. 克隆 TanStarter 模板并保留其 Git 历史。
+1. 克隆 TanStarter 模板、保留其 Git 历史，并把选定档位写入 `src/config/preset.ts`。
 2. 使用 `pnpm install` 安装依赖。
 3. 验证 Cloudflare 认证。
 4. （仅 Waffo）创建 Waffo 门店和模板内置的三个产品。

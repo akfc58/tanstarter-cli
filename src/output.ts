@@ -44,10 +44,18 @@ export function printFinalSummary(config: RuntimeConfig): void {
     '🎉 TanStarter project is ready',
     '',
     `Project: ${config.projectName}`,
+    `Preset: ${config.preset}`,
     `Directory: ${config.targetDir}`,
     `Website: ${productionUrl}`,
     `GitHub: ${githubUrl}`,
     `Delete: npx tanstarter-cli@latest delete ${config.projectName}`,
+    ...(config.preset === 'free'
+      ? [
+          '',
+          'The free preset still provisions D1, R2, and KV so the Worker boots.',
+          'They sit idle inside the free tiers; nothing is billed until you use them.',
+        ]
+      : []),
   ]);
   if (config.paymentProvider === 'waffo') {
     const publicBaseUrl = getPublicBaseUrl(config);

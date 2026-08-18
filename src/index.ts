@@ -42,7 +42,7 @@ import {
   printStep,
   printWelcomeBanner,
 } from './output.js';
-import { updatePackageName } from './template.js';
+import { updatePackageName, writePresetConfig } from './template.js';
 import type { SetupState } from './types.js';
 import { writeWranglerConfig } from './wrangler-config.js';
 import {
@@ -84,6 +84,10 @@ async function main(): Promise<void> {
       title: 'Clone TanStarter template',
       run: () => {
         cloneTemplate(state.config.targetDir, options.resume);
+        // Written here rather than with the other config files so a template
+        // too old to carry the preset layer fails before any Cloudflare
+        // resource exists.
+        writePresetConfig(state.config);
         // Persist the user's choices as soon as the project directory exists,
         // so a later failure can always be resumed without re-prompting.
         state = writeState(state.config.targetDir, state);

@@ -4,6 +4,7 @@ import process from 'node:process';
 import type { CliOptions, RuntimeConfig } from './types.js';
 import { requireEnv } from './utils.js';
 import {
+  assertPaymentAllowedForPreset,
   normalizeDomain,
   validateDomain,
   validateGithubRepo,
@@ -14,8 +15,13 @@ export function createConfig(options: CliOptions): RuntimeConfig {
   const cloudflareAccountId = requireEnv('CLOUDFLARE_ACCOUNT_ID');
   const cloudflareApiToken = requireEnv('CLOUDFLARE_API_TOKEN');
   const paymentProvider = options.payment ?? 'none';
+  // Defaults to full so an existing command line without --preset keeps
+  // producing exactly the project it produced before presets existed.
+  const preset = options.preset ?? 'full';
   const waffoMerchantId = process.env.WAFFO_MERCHANT_ID?.trim() ?? '';
   const waffoPrivateKey = process.env.WAFFO_PRIVATE_KEY ?? '';
+
+  assertPaymentAllowedForPreset(preset, paymentProvider);
 
   if (paymentProvider === 'waffo') {
     requireEnv('WAFFO_MERCHANT_ID');
@@ -36,6 +42,7 @@ export function createConfig(options: CliOptions): RuntimeConfig {
     githubRepo: options.githubRepo || options.projectName,
     cloudflareAccountId,
     cloudflareApiToken,
+    preset,
     paymentProvider,
     waffoSetupId: crypto.randomUUID(),
     waffoMerchantId,

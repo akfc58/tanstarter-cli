@@ -1,3 +1,5 @@
+import type { PaymentProvider, PresetName } from './types.js';
+
 export function normalizeSlug(value: string): string {
   return value
     .trim()
@@ -41,4 +43,30 @@ export function validateGithubRepo(value: string): void {
   if (!/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)?$/.test(value)) {
     throw new Error('--repo must be a GitHub repo name or owner/name.');
   }
+}
+
+export function parsePreset(value: string): PresetName {
+  const preset = value.trim().toLowerCase();
+  if (preset === 'free' || preset === 'account' || preset === 'full') {
+    return preset;
+  }
+  throw new Error('Preset must be one of: free, account, full.');
+}
+
+/**
+ * The free preset compiles the account system out of the generated project,
+ * so there is nothing for a subscription or an invoice to attach to.
+ */
+export function assertPaymentAllowedForPreset(
+  preset: PresetName,
+  payment: PaymentProvider
+): void {
+  if (preset !== 'free' || payment === 'none') return;
+  throw new Error(
+    [
+      `The free preset does not support payment (--payment ${payment}).`,
+      'free turns the account system off, so it cannot carry subscriptions or billing.',
+      'Use --preset account or --preset full to charge money, or drop --payment.',
+    ].join('\n')
+  );
 }

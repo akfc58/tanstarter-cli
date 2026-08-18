@@ -30,7 +30,7 @@ export WAFFO_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
 npx tanstarter-cli@latest create
 ```
 
-TanStarter CLI will ask for the project name, resource names, and payment method before creating anything. When you pick Waffo, it also creates a Waffo store, the three template products, and the webhook automatically.
+TanStarter CLI will ask for the project name, preset, resource names, and payment method before creating anything. When you pick Waffo, it also creates a Waffo store, the three template products, and the webhook automatically.
 
 
 ## Install
@@ -86,6 +86,7 @@ Options:
 
 - `--domain <domain>`: configure a Cloudflare custom domain route.
 - `--payment <none|waffo>`: payment method for the generated project. With `waffo`, the CLI uses the template's built-in monthly, yearly, and lifetime products, then creates the Waffo store, products, and webhook during setup.
+- `--preset <free|account|full>`: site tier of the generated project. Defaults to `full`; when omitted in an interactive terminal, the CLI asks and Enter accepts `full`. See [Presets](#presets).
 - `--repo <owner/name>`: create this GitHub repository. If omitted, TanStarter CLI defaults to the current GitHub CLI login and project name, for example `open-fox/my-app`.
 - `--resume`: continue a failed setup from `.tanstarter/state.json`.
 - `-h, --help`: show help.
@@ -108,6 +109,21 @@ To delete the Cloudflare and GitHub resources created by the CLI, run:
 ```bash
 tanstarter delete my-app
 ```
+
+## Presets
+
+A preset decides which third-party accounts the generated site needs. The CLI writes it into the project's `src/config/preset.ts` as `ACTIVE_PRESET`; you can change tiers later by editing that one line and redeploying.
+
+| Preset | Third-party accounts | What you get |
+| --- | --- | --- |
+| `free` | None | Blog, about page, and whatever tool or game you build on top. `git push` and you are live. |
+| `account` | A mail service account, which auth depends on. A payment provider too, if you charge. | Accounts, billing, file storage. |
+| `full` | The above, plus a newsletter account and a notification webhook. | Every module. |
+
+- **Cloudflare resources are the same in all three tiers.** Every preset creates D1, R2, and KV and runs the migrations, because the Worker needs those bindings to boot. A `free` project therefore still owns three resources; they sit idle inside the free tiers and are not billed until used. `delete` removes all three regardless of preset.
+- **`free` refuses payment.** `--preset free --payment waffo` exits with an error instead of silently ignoring the flag: `free` turns the account system off, so there is nothing for a subscription or an invoice to attach to.
+- **`account` and `full` may skip payment.** `VITE_PAYMENT_PROVIDER` is left empty and you get a site with accounts but no checkout — the pricing page, billing page, and payment webhooks are all inactive.
+- **The template must carry the preset layer.** If the cloned template has no `src/config/preset.ts`, or its `ACTIVE_PRESET` declaration no longer matches, the CLI fails right after the clone, before any Cloudflare resource is created.
 
 ## Prerequisites
 
@@ -137,7 +153,7 @@ Waffo may still require merchant verification, business details, or payout setup
 
 The setup flow:
 
-1. Clones the TanStarter template and preserves its Git history.
+1. Clones the TanStarter template, preserves its Git history, and writes the chosen preset into `src/config/preset.ts`.
 2. Installs dependencies with `pnpm install`.
 3. Verifies Cloudflare authentication.
 4. (Waffo only) Creates the Waffo store and three template products.

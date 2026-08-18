@@ -7,11 +7,14 @@ import { WAFFO_DOCS_URL } from './constants.js';
 import type {
   CliOptions,
   PaymentProvider,
+  PresetName,
   RuntimeConfig,
 } from './types.js';
 import {
+  assertPaymentAllowedForPreset,
   normalizeDomain,
   normalizeSlug,
+  parsePreset,
   validateDomain,
   validateGithubRepo,
   validateSlug,
@@ -56,8 +59,19 @@ async function promptForMissingOptions(
     githubRepo = getDefaultGithubRepo(nextConfig.projectName, nextConfig.githubRepo);
   }
 
+  let preset: PresetName = nextConfig.preset;
+  if (!options.preset) {
+    preset = await askPreset(rl);
+  }
+  nextConfig = { ...nextConfig, preset };
+
   let paymentProvider: PaymentProvider = nextConfig.paymentProvider;
-  if (!options.payment) {
+  if (preset === 'free') {
+    // Nothing to attach a subscription to, so there is no question to ask.
+    // An explicit --payment is a contradiction and must not be swallowed.
+    assertPaymentAllowedForPreset(preset, paymentProvider);
+    paymentProvider = 'none';
+  } else if (!options.payment) {
     paymentProvider = await askPaymentProvider(rl);
   }
 
@@ -117,6 +131,34 @@ function requireWaffoCredentials(): void {
         'Export both variables and run tanstarter create again.',
       ].join('\n')
     );
+  }
+}
+
+async function askPreset(
+  rl: ReturnType<typeof createInterface>
+): Promise<PresetName> {
+  console.log('\nSite preset — which third-party accounts the site needs:');
+  console.log(
+    '  free     No signup anywhere. git push and you are live. Tool or game site + blog + about.'
+  );
+  console.log(
+    '  account  Needs a mail service account (a hard dependency of auth). Accounts, billing, file storage.'
+  );
+  console.log(
+    '  full     Adds a newsletter account and a notification webhook. Every module.'
+  );
+
+  while (true) {
+    const answer = await rl.question(
+      'Preset (free/account/full, default: full): '
+    );
+    if (!answer.trim()) return 'full';
+
+    try {
+      return parsePreset(answer);
+    } catch (error) {
+      console.log(error instanceof Error ? error.message : String(error));
+    }
   }
 }
 
@@ -202,6 +244,7 @@ async function confirmSetup(
 ): Promise<void> {
   console.log('\nTanStarter will create:');
   console.log(`  Project: ${config.projectName}`);
+  console.log(`  Preset: ${config.preset}`);
   console.log(`  Directory: ${config.targetDir}`);
   console.log(`  Worker: ${config.projectName}`);
   console.log(`  D1 database: ${config.d1DatabaseName}`);
