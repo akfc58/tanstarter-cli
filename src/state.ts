@@ -22,6 +22,11 @@ export function readState(
 ): SetupState {
   const statePath = path.join(targetDir, STATE_DIR, STATE_FILE);
   if (!fs.existsSync(statePath)) {
+    // Reachable two ways: the first clone failed and left nothing behind, or
+    // --resume was pointed at the wrong directory. Only the first is intended,
+    // and both silently produce a brand-new project at default options, so say
+    // so loudly enough that a mistyped path can still be cancelled.
+    console.log(formatMissingStateWarning(statePath, fallbackConfig));
     const initialState: SetupState = {
       completedSteps: [],
       config: fallbackConfig,
@@ -45,6 +50,21 @@ export function readState(
       },
     }
   );
+}
+
+export function formatMissingStateWarning(
+  statePath: string,
+  fallbackConfig: RuntimeConfig
+): string {
+  return [
+    '',
+    `\u26a0 No setup state found at ${statePath}`,
+    '  --resume has nothing to resume, so this run starts a brand-new project',
+    `  with default options (preset: ${fallbackConfig.preset}, payment: ${fallbackConfig.paymentProvider}).`,
+    '  To resume an existing project, cancel now and rerun from the directory',
+    '  that contains it, not from inside it.',
+    '',
+  ].join('\n');
 }
 
 export function writeState(targetDir: string, state: SetupState): SetupState {

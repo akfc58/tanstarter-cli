@@ -25,7 +25,7 @@ import { initializeGit } from '../src/git.ts';
 import { isCliEntrypoint } from '../src/index.ts';
 import { getInstallPlan } from '../src/preflight.ts';
 import { configureSetup, formatDefaultGithubRepo } from '../src/prompt.ts';
-import { readExistingState, writeState } from '../src/state.ts';
+import { readExistingState, readState, writeState } from '../src/state.ts';
 import { writePresetConfig } from '../src/template.ts';
 import type { CliOptions, RuntimeConfig } from '../src/types.ts';
 import {
@@ -630,6 +630,49 @@ describe('setup state', () => {
     expect(raw).toContain('"cloudflareApiToken": ""');
     expect(raw).toContain('"waffoPrivateKey": ""');
     expect(JSON.parse(raw).config.waffoMerchantId).toBe('MER_test');
+  });
+
+  it('warns instead of silently starting over when --resume finds no state', () => {
+    const config = createTestConfig({ preset: 'free' });
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tanstarter-test-'));
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args: unknown[]) => {
+        logs.push(args.join(' '));
+      });
+
+    try {
+      const state = readState(emptyDir, config);
+      expect(state.completedSteps).toEqual([]);
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    const output = logs.join('\n');
+    expect(output).toContain('No setup state found at');
+    expect(output).toContain(path.join(emptyDir, '.tanstarter', 'state.json'));
+    expect(output).toContain('starts a brand-new project');
+    // The tier it would silently fall back to is the whole point of the warning.
+    expect(output).toContain('preset: free');
+  });
+
+  it('stays quiet when --resume finds the state file', () => {
+    const config = createTestConfig({ preset: 'free' });
+    writeState(config.targetDir, {
+      completedSteps: ['clone-template'],
+      config,
+      updatedAt: new Date().toISOString(),
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      const state = readState(config.targetDir, config);
+      expect(state.completedSteps).toEqual(['clone-template']);
+      expect(logSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('persists the preset so --resume and delete see the same tier', () => {
