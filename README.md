@@ -173,7 +173,7 @@ The generated repository uses `origin` for your new GitHub repository and
 template history is preserved, future template updates can use a normal Git
 merge instead of reconstructing a common ancestor.
 
-Environment variables from the template `.env.example` are copied from your shell into the generated `.env` and `.env.production` files when present. Generated Cloudflare, D1, KV, base URL, and auth secret values take precedence.
+The generated `.env` and `.env.production` start as full copies of the template's `env.example` manifest, so every variable it declares is present. Variables already set in your shell are filled in on top of that, and generated Cloudflare, D1, KV, base URL, and auth secret values take precedence.
 
 ## Links:
 

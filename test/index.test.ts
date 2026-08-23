@@ -359,6 +359,60 @@ describe('file content helpers', () => {
       fs.readFileSync(path.join(config.targetDir, '.env.production'), 'utf8')
     ).toContain("VITE_BASE_URL='https://demo-app.example.workers.dev'");
   });
+
+  it('seeds env files from the template env.example manifest', () => {
+    const config = createTestConfig();
+    fs.writeFileSync(
+      path.join(config.targetDir, 'env.example'),
+      [
+        '# manifest header',
+        "VITE_BASE_URL='http://localhost:3000'",
+        "CLOUDFLARE_ACCOUNT_ID=''",
+        "RESEND_API_KEY=''",
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+
+    ensureEnvFiles(config);
+
+    for (const envFile of ['.env', '.env.production']) {
+      const content = fs.readFileSync(
+        path.join(config.targetDir, envFile),
+        'utf8'
+      );
+      expect(content).toContain('# manifest header');
+      expect(content).toContain("RESEND_API_KEY=''");
+      expect(content).toContain("CLOUDFLARE_ACCOUNT_ID='account-id'");
+    }
+  });
+
+  it('fails loudly when the template ships no env manifest', () => {
+    expect(() => ensureEnvFiles(createTestConfig())).toThrow(/env\.example/);
+  });
+
+  it('warns about variables missing from an env file kept from an earlier run', () => {
+    const config = createTestConfig();
+    fs.writeFileSync(
+      path.join(config.targetDir, 'env.example'),
+      "VITE_BASE_URL=''\nRESEND_API_KEY=''\nSENTRY_DSN=''\n",
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(config.targetDir, '.env'),
+      "VITE_BASE_URL='http://localhost:3000'\n",
+      'utf8'
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    ensureEnvFiles(config);
+
+    const warned = warn.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(warned).toContain('.env is missing 2 variable(s)');
+    expect(warned).toContain('RESEND_API_KEY, SENTRY_DSN');
+    expect(warned).not.toContain('.env.production is missing');
+    warn.mockRestore();
+  });
 });
 
 describe('wrangler config writing', () => {
