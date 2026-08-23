@@ -17,7 +17,8 @@ const WAFFO_ENV_KEYS = [
 ] as const;
 
 export function ensureEnvFiles(config: RuntimeConfig): void {
-  const processEnvValues = getProcessEnvValuesFromExample(config.targetDir);
+  const examplePath = resolveEnvExamplePath(config.targetDir);
+  const processEnvValues = getProcessEnvValuesFromExample(examplePath);
   delete processEnvValues.VITE_PAYMENT_PROVIDER;
   for (const key of WAFFO_ENV_KEYS) {
     delete processEnvValues[key];
@@ -37,9 +38,11 @@ export function ensureEnvFiles(config: RuntimeConfig): void {
     }
   }
 
+  const declaredKeys = Object.keys(parseEnvFile(examplePath));
+
   for (const envFile of ['.env', '.env.production']) {
     const envPath = path.join(config.targetDir, envFile);
-    ensureEnvFile(envPath, config.targetDir);
+    ensureEnvFile(envPath, examplePath);
     const existing = parseEnvFile(envPath);
     const baseUrl =
       envFile === '.env'
@@ -50,13 +53,37 @@ export function ensureEnvFiles(config: RuntimeConfig): void {
       process.env.BETTER_AUTH_SECRET ||
       crypto.randomBytes(32).toString('base64url');
 
-    updateEnvFile(envPath, {
+    const values = {
       ...processEnvValues,
       ...sharedValues,
       VITE_BASE_URL: baseUrl,
       BETTER_AUTH_SECRET: betterAuthSecret,
-    });
+    };
+    updateEnvFile(envPath, values);
+    warnMissingKeys(envFile, declaredKeys, { ...existing, ...values });
   }
+}
+
+/**
+ * An env file kept from an earlier run is never re-seeded, so one written by a
+ * CLI that failed to locate the manifest stays short of variables forever.
+ * Say so instead of leaving the gap to surface at build or secret-sync time.
+ */
+function warnMissingKeys(
+  envFile: string,
+  declaredKeys: string[],
+  present: Record<string, string>
+): void {
+  const missing = declaredKeys.filter((key) => !(key in present));
+  if (missing.length === 0) return;
+
+  console.warn(
+    [
+      `Warning: ${envFile} is missing ${missing.length} variable(s) declared by the template:`,
+      `  ${missing.join(', ')}`,
+      '  Copy them over from the template manifest before deploying.',
+    ].join('\n')
+  );
 }
 
 function waffoEnvValues(config: RuntimeConfig): Record<string, string> {
@@ -80,14 +107,38 @@ function getProductionBaseUrl(config: RuntimeConfig): string {
   return config.deploymentUrl || 'http://localhost:3000';
 }
 
-function ensureEnvFile(filePath: string, targetDir: string): void {
+/**
+ * The template ships its variable manifest as `env.example` — no leading dot,
+ * so the template's own `.env*` gitignore rules keep their hands off it. The
+ * dotted spelling stays accepted for older templates.
+ */
+const ENV_EXAMPLE_NAMES = ['env.example', '.env.example'] as const;
+
+/**
+ * A missing manifest must fail loudly: silently seeding empty env files ships a
+ * project missing every variable the template declares, and that only surfaces
+ * much later, at build or secret-sync time.
+ */
+function resolveEnvExamplePath(targetDir: string): string {
+  for (const name of ENV_EXAMPLE_NAMES) {
+    const candidate = path.join(targetDir, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  throw new Error(
+    [
+      `Could not find ${ENV_EXAMPLE_NAMES.join(' or ')} in the generated project.`,
+      'The cloned template carries no environment variable manifest, so .env and',
+      '.env.production cannot be seeded. Update the template, or use a CLI version',
+      'matching it.',
+    ].join('\n')
+  );
+}
+
+function ensureEnvFile(filePath: string, examplePath: string): void {
   if (fs.existsSync(filePath)) return;
 
-  const examplePath = path.join(targetDir, '.env.example');
-  const content = fs.existsSync(examplePath)
-    ? fs.readFileSync(examplePath, 'utf8')
-    : '';
-  fs.writeFileSync(filePath, content, 'utf8');
+  fs.writeFileSync(filePath, fs.readFileSync(examplePath, 'utf8'), 'utf8');
 }
 
 function parseEnvFile(filePath: string): Record<string, string> {
@@ -110,11 +161,8 @@ function parseEnvFile(filePath: string): Record<string, string> {
 }
 
 function getProcessEnvValuesFromExample(
-  targetDir: string
+  examplePath: string
 ): Record<string, string> {
-  const examplePath = path.join(targetDir, '.env.example');
-  if (!fs.existsSync(examplePath)) return {};
-
   const values: Record<string, string> = {};
   const example = parseEnvFile(examplePath);
 
