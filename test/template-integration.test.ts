@@ -9,6 +9,7 @@ import { DEFAULT_TEMPLATE_URL } from '../src/constants.ts';
 import { ensureEnvFiles } from '../src/env.ts';
 import { updatePackageName, writePresetConfig } from '../src/template.ts';
 import type { RuntimeConfig } from '../src/types.ts';
+import { stripJsonc, writeWranglerConfig } from '../src/wrangler-config.ts';
 
 /**
  * The template repository is private and stays private, so this suite runs
@@ -127,5 +128,45 @@ describe('generated files against the real template', () => {
     const { removed, added } = changedLines(before, after);
     expect(removed).toEqual(['  "name": "tanstack-template",']);
     expect(added).toEqual(['  "name": "qa-regression",']);
+  });
+
+  it('rewrites wrangler.jsonc without disturbing comments or formatting', () => {
+    const wranglerPath = path.join(templateDir, 'wrangler.jsonc');
+    const before = fs.readFileSync(wranglerPath, 'utf8');
+
+    writeWranglerConfig(createConfigFor(templateDir));
+
+    const after = fs.readFileSync(wranglerPath, 'utf8');
+    const { removed } = changedLines(before, after);
+    for (const line of removed) {
+      expect(line).toMatch(
+        /"(name|pattern|custom_domain|routes|database_name|database_id|bucket_name|id)"|^ {2,4}[[\]{}],?$/
+      );
+    }
+
+    const commentLinesBefore = before
+      .split('\n')
+      .filter((line) => line.trim().startsWith('//')).length;
+    const commentLinesAfter = after
+      .split('\n')
+      .filter((line) => line.trim().startsWith('//')).length;
+    expect(commentLinesAfter).toBeGreaterThanOrEqual(commentLinesBefore);
+  });
+
+  it('points the generated Worker at the project resources', () => {
+    const config = createConfigFor(templateDir);
+    writeWranglerConfig(config);
+
+    const parsed = JSON.parse(
+      stripJsonc(fs.readFileSync(path.join(templateDir, 'wrangler.jsonc'), 'utf8'))
+    );
+    expect(parsed.name).toBe('qa-regression');
+    expect(parsed.routes).toBeUndefined();
+    expect(parsed.d1_databases[0].database_id).toBe(
+      '11111111-2222-3333-4444-555555555555'
+    );
+    expect(parsed.kv_namespaces[0].id).toBe(
+      '0123456789abcdef0123456789abcdef'
+    );
   });
 });

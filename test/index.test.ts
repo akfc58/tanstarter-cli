@@ -415,26 +415,45 @@ describe('file content helpers', () => {
   });
 });
 
+const WRANGLER_FIXTURE = fs.readFileSync(
+  new URL('./fixtures/wrangler.jsonc', import.meta.url),
+  'utf8'
+);
+
+function seedWranglerFixture(targetDir: string): string {
+  const wranglerPath = path.join(targetDir, 'wrangler.jsonc');
+  fs.writeFileSync(wranglerPath, WRANGLER_FIXTURE, 'utf8');
+  return wranglerPath;
+}
+
 describe('wrangler config writing', () => {
+  it('keeps the template comments and single-line arrays', () => {
+    const config = createTestConfig({ domain: 'app.example.com' });
+    const wranglerPath = seedWranglerFixture(config.targetDir);
+
+    writeWranglerConfig(config);
+
+    const content = fs.readFileSync(wranglerPath, 'utf8');
+    expect(content).toContain('// Enable auto-populating process.env');
+    expect(content).toContain(
+      '// Daily credits expiry (UTC midnight). See src/credits/expire.ts'
+    );
+    // The re-wrapped crons array is what biome rejected after the old
+    // JSON.stringify round trip.
+    expect(content).toContain('"crons": ["0 0 * * *"]');
+  });
+
   it('writes D1, R2, KV, and custom domain settings', () => {
     const config = createTestConfig({ domain: 'app.example.com' });
-    fs.writeFileSync(
-      path.join(config.targetDir, 'wrangler.jsonc'),
-      `{
-        // existing template setting
-        "compatibility_date": "2026-07-04",
-      }`,
-      'utf8'
-    );
+    const wranglerPath = seedWranglerFixture(config.targetDir);
 
     writeWranglerConfig(config);
 
     const wranglerConfig = JSON.parse(
-      stripJsonc(fs.readFileSync(path.join(config.targetDir, 'wrangler.jsonc'), 'utf8'))
+      stripJsonc(fs.readFileSync(wranglerPath, 'utf8'))
     );
 
     expect(wranglerConfig).toMatchObject({
-      compatibility_date: '2026-07-04',
       name: 'demo-app',
       routes: [{ pattern: 'app.example.com', custom_domain: true }],
       d1_databases: [
@@ -445,41 +464,45 @@ describe('wrangler config writing', () => {
           migrations_dir: './src/db/migrations',
         },
       ],
-      r2_buckets: [
-        {
-          binding: 'BUCKET',
-          bucket_name: 'demo-app-bucket',
-        },
-      ],
+      r2_buckets: [{ binding: 'BUCKET', bucket_name: 'demo-app-bucket' }],
       kv_namespaces: [
-        {
-          binding: 'CACHE',
-          id: '0123456789abcdef0123456789abcdef',
-        },
+        { binding: 'CACHE', id: '0123456789abcdef0123456789abcdef' },
       ],
     });
   });
 
-  it('removes active routes and leaves commented guidance without a domain', () => {
+  it('comments out the routes block when no domain is given', () => {
     const config = createTestConfig();
-    fs.writeFileSync(
-      path.join(config.targetDir, 'wrangler.jsonc'),
-      JSON.stringify({
-        routes: [{ pattern: 'old.example.com', custom_domain: true }],
-      }),
-      'utf8'
-    );
+    const wranglerPath = seedWranglerFixture(config.targetDir);
 
     writeWranglerConfig(config);
 
-    const content = fs.readFileSync(
+    const content = fs.readFileSync(wranglerPath, 'utf8');
+    expect(JSON.parse(stripJsonc(content)).routes).toBeUndefined();
+    expect(content).toContain('Custom domains are disabled by TanStarter CLI.');
+    expect(content).not.toContain('tanstack-template.fishwiththemoon.uk');
+  });
+
+  it('is a no-op when rerun with the same options', () => {
+    const config = createTestConfig();
+    const wranglerPath = seedWranglerFixture(config.targetDir);
+
+    writeWranglerConfig(config);
+    const first = fs.readFileSync(wranglerPath, 'utf8');
+    writeWranglerConfig(config);
+
+    expect(fs.readFileSync(wranglerPath, 'utf8')).toBe(first);
+  });
+
+  it('fails loudly when the template stops declaring a generated field', () => {
+    const config = createTestConfig();
+    fs.writeFileSync(
       path.join(config.targetDir, 'wrangler.jsonc'),
+      WRANGLER_FIXTURE.replace('"bucket_name"', '"bucket_label"'),
       'utf8'
     );
-    const wranglerConfig = JSON.parse(stripJsonc(content));
 
-    expect(wranglerConfig.routes).toBeUndefined();
-    expect(content).toContain('Custom domains are disabled by TanStarter CLI.');
+    expect(() => writeWranglerConfig(config)).toThrow(/bucket_name/);
   });
 });
 

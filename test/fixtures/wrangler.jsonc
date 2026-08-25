@@ -1,0 +1,99 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tanstack-template", // TODO: worker的名字
+  "compatibility_date": "2025-09-02",
+  "compatibility_flags": [
+    // Enable Node.js API
+    // https://developers.cloudflare.com/workers/configuration/compatibility-flags/#nodejs-compatibility-flag
+    "nodejs_compat",
+    // This also enables nodejs_compat_v2 as long as compatibility date is 2024-09-23 or later.
+    // https://developers.cloudflare.com/workers/configuration/compatibility-dates/#nodejs-compatibility-flag
+    // Enable improved Node.js API with polyfills and native code
+    // https://blog.cloudflare.com/zh-cn/more-npm-packages-on-cloudflare-workers-combining-polyfills-and-native-code/
+    // "nodejs_compat_v2",
+    // Enable auto-populating process.env
+    // https://developers.cloudflare.com/workers/configuration/compatibility-flags/#enable-auto-populating-processenv
+    "nodejs_compat_populate_process_env",
+    // Allow to fetch URLs in your app
+    // https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
+    "global_fetch_strictly_public"
+  ],
+
+  // https://developers.cloudflare.com/workers/wrangler/configuration
+  // The path to the entrypoint of your Worker that will be executed
+  "main": "./src/server.ts",
+
+  // Daily credits expiry (UTC midnight). See src/credits/expire.ts
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
+
+  // Enables Workers Trace Events Logpush for a Worker
+  "logpush": true,
+
+  // Whether Wrangler should keep variables configured in the dashboard on deploy
+  "keep_vars": true,
+
+  // Enables automatically ingest, store, filter, and analyze logging data emitted from Cloudflare Workers
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
+
+  // Custom domains
+  // https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+  // TODO:
+  "routes": [
+    {
+      "pattern": "tanstack-template.fishwiththemoon.uk",
+      "custom_domain": true
+    }
+  ],
+
+  /**
+   * Bindings
+   * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+   * databases, object storage, AI inference, real-time communication and more.
+   * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+   */
+  /**
+   * D1: create database with `npx wrangler d1 create tanstack-template`
+   */
+  // TODO:
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tanstack-template",
+      "database_id": "43858c0c-ed99-4260-91b1-04e2645f70bf",
+      "migrations_dir": "./src/db/migrations"
+    }
+  ],
+  /**
+   * R2: create bucket with `npx wrangler r2 bucket create tanstack-template`
+   */
+  // TODO:
+  "r2_buckets": [
+    {
+      "bucket_name": "tanstack-template",
+      "binding": "BUCKET"
+    }
+  ],
+  /**
+   * KV: server-side cache.
+   * Create with `npx wrangler kv namespace create CACHE`, then replace the id.
+   */
+  // TODO:
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "0eb368f697bf439a8f3913d94561f0b3"
+    }
+  ]
+}
