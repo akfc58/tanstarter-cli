@@ -19,10 +19,12 @@ import {
 import { runCommand, shellForPlatform } from '../src/commands.ts';
 import { createConfig } from '../src/config.ts';
 import { DEFAULT_TEMPLATE_URL } from '../src/constants.ts';
+import { deleteProject } from '../src/delete.ts';
 import { ensureEnvFiles, formatEnvValue } from '../src/env.ts';
 import { getPublicBaseUrl, verifyPublicDeployment } from '../src/deployment.ts';
 import { initializeGit } from '../src/git.ts';
 import { isCliEntrypoint } from '../src/index.ts';
+import { formatManualCleanup } from '../src/output.ts';
 import { getInstallPlan } from '../src/preflight.ts';
 import { configureSetup, formatDefaultGithubRepo } from '../src/prompt.ts';
 import { readExistingState, readState, writeState } from '../src/state.ts';
@@ -1549,5 +1551,88 @@ describe('deployment URL resolution', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(delays).toEqual([2_000]);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('teardown reporting', () => {
+  it('lists Waffo resources as manual cleanup when payment is waffo', () => {
+    const lines = formatManualCleanup(
+      createTestConfig({
+        paymentProvider: 'waffo',
+        waffoStoreId: 'store-1',
+        waffoWebhookId: 'hook-1',
+        waffoProductIds: {
+          proMonthly: 'prod-1',
+          proYearly: 'prod-2',
+          lifetime: 'prod-3',
+        },
+      })
+    );
+
+    expect(lines.join('\n')).toContain('store-1');
+    expect(lines.join('\n')).toContain('hook-1');
+    expect(lines.join('\n')).toContain('prod-3');
+  });
+
+  it('reports nothing to clean up without a payment provider', () => {
+    expect(formatManualCleanup(createTestConfig())).toEqual([]);
+  });
+});
+
+describe('delete confirmation', () => {
+  /**
+   * Only the cancelling paths are exercised. A confirmed delete would shell
+   * out to Wrangler and gh for real, and every cancel path throws before the
+   * first step runs, which is exactly the behaviour worth pinning down.
+   */
+  async function runCancelledDelete(answers: string[]): Promise<void> {
+    const stdin = Object.assign(new PassThrough(), { isTTY: true });
+    const originalStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', {
+      value: stdin,
+      configurable: true,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const pending = [...answers];
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(((chunk: unknown) => {
+        if (String(chunk).trimEnd().endsWith(':') && pending.length > 0) {
+          setImmediate(() => stdin.write(`${pending.shift()}\n`));
+        }
+        return true;
+      }) as typeof process.stdout.write);
+
+    const config = createTestConfig();
+    try {
+      await deleteProject(
+        { command: 'delete', projectName: config.projectName, targetDir: config.targetDir, domain: '', resume: false },
+        config
+      );
+    } finally {
+      logSpy.mockRestore();
+      writeSpy.mockRestore();
+      Object.defineProperty(process, 'stdin', originalStdin);
+      stdin.end();
+    }
+  }
+
+  it('stops at the first gate when the word is not delete', async () => {
+    await expect(runCancelledDelete(['nope'])).rejects.toThrow(
+      'Delete cancelled.'
+    );
+  });
+
+  it('stops at the second gate on anything but an exact yes', async () => {
+    await expect(runCancelledDelete(['delete', 'y'])).rejects.toThrow(
+      'Delete cancelled.'
+    );
+    await expect(runCancelledDelete(['delete', ''])).rejects.toThrow(
+      'Delete cancelled.'
+    );
+    await expect(runCancelledDelete(['delete', 'YES'])).rejects.toThrow(
+      'Delete cancelled.'
+    );
   });
 });

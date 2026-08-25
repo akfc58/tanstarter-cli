@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline/promises';
 
 import { deleteD1, deleteKV, deleteR2, deleteWorker } from './cloudflare.js';
 import { deleteGithubRepo } from './git.js';
-import { printCompletedStep, printStep } from './output.js';
+import { formatManualCleanup, printCompletedStep, printStep } from './output.js';
 import type { CliOptions, RuntimeConfig } from './types.js';
 
 export async function deleteProject(
@@ -31,6 +31,13 @@ export async function deleteProject(
   for (const [index, step] of steps.entries()) {
     printStep(index + 1, steps.length, `Delete ${step.label}`);
     await runDeleteStep(failures, step.label, step.action);
+  }
+
+  const manualCleanup = formatManualCleanup(config);
+  if (manualCleanup.length > 0) {
+    console.log(
+      `\nNeeds manual cleanup in the Waffo dashboard:\n${manualCleanup.join('\n')}`
+    );
   }
 
   if (failures.length > 0) {
@@ -87,7 +94,9 @@ async function confirmDelete(
   console.log('\nTanStarter will delete:');
   console.log(`  Worker: ${config.projectName}`);
   if (config.domain) {
-    console.log(`  Worker custom domain route: ${config.domain}`);
+    console.log(
+      `  Worker custom domain: ${config.domain} (released with the Worker)`
+    );
   }
   console.log(
     `  GitHub repo: ${options.githubRepo || config.githubRepo || config.projectName}`
@@ -96,12 +105,28 @@ async function confirmDelete(
   console.log(`  R2 bucket: ${config.r2BucketName}`);
   console.log(`  KV namespace: ${config.kvNamespaceName}`);
 
+  const manualCleanup = formatManualCleanup(config);
+  if (manualCleanup.length > 0) {
+    console.log('\nTanStarter will NOT delete these:');
+    for (const line of manualCleanup) console.log(line);
+  }
+
   if (!process.stdin.isTTY) return;
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const answer = await rl.question('\nType "delete" to continue: ');
-    if (answer.trim() !== 'delete') {
+    const typed = await rl.question('\nType "delete" to continue: ');
+    if (typed.trim() !== 'delete') {
+      throw new Error('Delete cancelled.');
+    }
+
+    // Second gate. The first word becomes muscle memory for anyone who has
+    // run this before, and nothing here can be undone, so the last thing on
+    // screen is the project name and an exact answer.
+    const confirmed = await rl.question(
+      `Permanently delete ${config.projectName} and everything listed above? Type "yes": `
+    );
+    if (confirmed.trim() !== 'yes') {
       throw new Error('Delete cancelled.');
     }
   } finally {
