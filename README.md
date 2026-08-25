@@ -224,7 +224,7 @@ merge instead of reconstructing a common ancestor. The CLI also runs
 `gh secret list` report on your project instead of resolving to the template
 through the `upstream` remote.
 
-The generated `.env` and `.env.production` start as full copies of the template's `env.example` manifest, so every variable it declares is present. Variables already set in your shell are filled in on top of that, and generated Cloudflare, D1, KV, base URL, and auth secret values take precedence.
+The generated `.env` and `.env.production` start as full copies of the template's `env.example` manifest, so every variable it declares is present. Variables already set in your shell are filled in on top of that, and generated Cloudflare, D1, base URL, and auth secret values take precedence.
 
 ## Links:
 

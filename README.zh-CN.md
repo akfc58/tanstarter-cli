@@ -207,7 +207,7 @@ Waffo 仍可能要求在控制台完成商户验证、企业资料和收款账�
 运行 `gh repo set-default`，因此 `gh run list`、`gh pr list`、`gh secret list`
 会作用在你的项目上，而不会通过 `upstream` 远程解析到模板仓库。
 
-生成的 `.env` 和 `.env.production` 会先完整复制模板的 `env.example` 清单，保证其中声明的变量一个不少；当前 shell 中已存在的同名变量会在此基础上填入，CLI 自动生成的 Cloudflare、D1、KV、base URL 和 auth secret 等值优先生效。
+生成的 `.env` 和 `.env.production` 会先完整复制模板的 `env.example` 清单，保证其中声明的变量一个不少；当前 shell 中已存在的同名变量会在此基础上填入，CLI 自动生成的 Cloudflare、D1、base URL 和 auth secret 等值优先生效。
 
 ## 链接
 

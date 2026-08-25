@@ -1153,5 +1153,5 @@ tanstarter delete qa-regression                             # K6：确认无残�
 
 - **契约覆盖**：K1/K2 已消解不实现（备注段写明）；K3 与 K4 → Task 2；K5 → Task 3；K6 → Task 4；K7 → Task 5；K8 → Task 1 + Task 2 Step 6。已裁决不做的四项（支付 provider 范围、首次部署 base URL、state.json 权限、代问站点名）不在计划内。
 - **占位符**：无 TBD / 「类似 Task N」；每个代码步骤都给了可直接落地的完整代码。
-- **类型一致性**：`deleteWorkerCustomDomain` / `formatManualCleanup` / `setDefaultGithubRepo` / `getGithubRepoNameWithOwner` 在定义处与调用处名称一致；`writeWranglerConfig` 与 `stripJsonc` 签名保持不变，`test/index.test.ts` 现有 import 不受影响。`CloudflareWorkerCustomDomain` 新增的 `id` 字段被 `deleteWorkerCustomDomain` 与测试桩同时使用。
+- **类型一致性**：`formatManualCleanup` / `setDefaultGithubRepo` / `getGithubRepoNameWithOwner` 在定义处与调用处名称一致；`writeWranglerConfig` 与 `stripJsonc` 签名保持不变，`test/index.test.ts` 现有 import 不受影响。
 - **已知风险**：`tsconfig` 开了 `noUncheckedIndexedAccess`，Task 2 的下标访问都按 `T | undefined` 处理（`parsed.d1_databases?.[0]?.x`）。两处覆盖缺口是有意留的，均由人工 QA 兜：K5 没有自动化测试；集成测试不进 CI，靠发版前的本地执行。
