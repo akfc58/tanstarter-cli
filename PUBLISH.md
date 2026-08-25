@@ -41,6 +41,8 @@ pnpm run build
 npm pack --dry-run
 ```
 
+- 发版前在本机跑一次 `pnpm run test:template`。它会真实 clone 模板并校验生成文件，是唯一能发现模板结构漂移（`env.example` 文件名、`preset.ts` 声明、`wrangler.jsonc` 字段）的检查。模板是 private 仓库，CI 拿不到它，这条只能在本地跑。
+
 Bump the version and push the generated commit and tag:
 
 ```bash

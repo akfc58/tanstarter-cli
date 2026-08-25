@@ -135,6 +135,54 @@ A preset decides which third-party accounts the generated site needs. The CLI wr
 
 The CLI checks for `node`, `pnpm`, `git`, `gh`, GitHub CLI auth, and Cloudflare credentials. If `pnpm`, `git`, or `gh` is missing, the CLI attempts to install it with the available system package manager before continuing.
 
+### How third-party credentials reach the generated project
+
+The CLI reads every value from `process.env` **once, when it starts**. It does
+not read a `.env` file, does not prompt for these keys, and does not re-read
+your shell later in the run. A key you did not `export` before launching ends
+up empty in the generated `.env` and `.env.production`, and you only notice
+after the site is live — Google sign-in, payments, or Turnstile silently do
+nothing.
+
+The full list of variables is the template's
+[`env.example`](https://github.com/akfc58/tanstack-template/blob/main/env.example);
+the generated env files are seeded from it, so it is the single source of truth.
+The ones people usually want set before the first run:
+
+| Area | Variables |
+| --- | --- |
+| Cloudflare (required) | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` |
+| Google sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Transactional mail | `RESEND_API_KEY` |
+| Bot protection | `VITE_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` |
+| Stripe / Creem payments | `STRIPE_*`, `CREEM_*`, and their `VITE_*_PRICE_*` / `VITE_*_PRODUCT_*` ids |
+| Newsletter and notifications | `BEEHIIV_API_KEY`, `BEEHIIV_PUBLICATION_ID`, `DISCORD_WEBHOOK_URL`, `FEISHU_WEBHOOK_URL` |
+| Analytics | `VITE_PLAUSIBLE_SCRIPT`, `VITE_UMAMI_SCRIPT`, `VITE_UMAMI_WEBSITE_ID`, `VITE_GOOGLE_ANALYTICS_ID`, `VITE_CLARITY_PROJECT_ID` |
+| AI features | `AI_CHAT_PROVIDER`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `AI_COMPAT_*`, `FAL_KEY` |
+
+Anything left empty can be filled in later by editing `.env.production` and
+running `pnpm run sync-worker-secrets`.
+
+### Variables the CLI decides for you
+
+Exporting these has no effect — the CLI drops whatever your shell set and writes
+its own values:
+
+- `VITE_PAYMENT_PROVIDER`
+- `WAFFO_DEBUG`, `WAFFO_MERCHANT_ID`, `WAFFO_PRIVATE_KEY`, `WAFFO_STORE_ID`,
+  `VITE_WAFFO_PRODUCT_PRO_MONTHLY`, `VITE_WAFFO_PRODUCT_PRO_YEARLY`,
+  `VITE_WAFFO_PRODUCT_LIFETIME`
+
+(`WAFFO_MERCHANT_ID` and `WAFFO_PRIVATE_KEY` are still read from your shell as
+setup credentials with `--payment waffo`; what the CLI controls is the value
+written into the generated project.)
+
+Without `--payment waffo`, `VITE_PAYMENT_PROVIDER` is written empty. That is a
+site with accounts but no checkout: `/pricing` redirects, `/settings/billing`
+is inactive, and payment webhooks do nothing. This is the most common source of
+confusion right after the first deployment — set a provider in
+`.env.production` and redeploy when you are ready to charge.
+
 ### Non-interactive Waffo setup
 
 When running without a TTY, pass `--payment waffo`. No store/product fields or extra Waffo environment variables are required; the CLI uses the template's built-in pricing. `--domain` is optional:
@@ -164,14 +212,17 @@ The setup flow:
 9. Syncs Worker secrets.
 10. Verifies the public deployment URL.
 11. (Waffo only) Registers the webhook after the deployed route is reachable.
-12. Creates a GitHub repository.
+12. Creates a GitHub repository and pins it as the gh default.
 13. Syncs GitHub Actions secrets.
 14. Commits and pushes to `main`.
 
 The generated repository uses `origin` for your new GitHub repository and
-`upstream` for `https://github.com/MkFastHQ/mkfast-template.git`. Because the
+`upstream` for `https://github.com/akfc58/tanstack-template.git`. Because the
 template history is preserved, future template updates can use a normal Git
-merge instead of reconstructing a common ancestor.
+merge instead of reconstructing a common ancestor. The CLI also runs
+`gh repo set-default` on your repository, so `gh run list`, `gh pr list`, and
+`gh secret list` report on your project instead of resolving to the template
+through the `upstream` remote.
 
 The generated `.env` and `.env.production` start as full copies of the template's `env.example` manifest, so every variable it declares is present. Variables already set in your shell are filled in on top of that, and generated Cloudflare, D1, KV, base URL, and auth secret values take precedence.
 
