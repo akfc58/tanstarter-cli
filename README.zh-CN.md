@@ -136,6 +136,38 @@ tanstarter delete my-app
 
 CLI 会检查 `node`、`pnpm`、`git`、`gh`、GitHub CLI 登录状态和 Cloudflare 凭证。如果缺少 `pnpm`、`git` 或 `gh`，CLI 会尝试通过系统可用的包管理器自动安装。
 
+### 第三方凭据怎么进入生成的项目
+
+CLI 会在启动时一次性从 `process.env` 读取所有取值，不会读取 `.env` 文件，不会为这些键弹出提示，运行过程中也不会重新读取你的 shell。启动前没有 `export` 的键，会在生成的 `.env` 和 `.env.production` 里留空，往往要等到网站已经上线才会发现：Google 登录、支付或 Turnstile 悄无声息地不生效。
+
+完整变量清单以模板的 [`env.example`](https://github.com/akfc58/tanstack-template/blob/main/env.example) 为准，生成的 env 文件正是从它播种而来，是唯一的事实来源。首次运行前通常需要提前设置的变量：
+
+| 分类 | 变量 |
+| --- | --- |
+| Cloudflare（必需） | `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN` |
+| Google 登录 | `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET` |
+| 事务邮件 | `RESEND_API_KEY` |
+| 机器人防护 | `VITE_TURNSTILE_SITE_KEY`、`TURNSTILE_SECRET_KEY` |
+| Stripe / Creem 支付 | `STRIPE_*`、`CREEM_*`，以及它们的 `VITE_*_PRICE_*` / `VITE_*_PRODUCT_*` id |
+| Newsletter 与通知 | `BEEHIIV_API_KEY`、`BEEHIIV_PUBLICATION_ID`、`DISCORD_WEBHOOK_URL`、`FEISHU_WEBHOOK_URL` |
+| 数据分析 | `VITE_PLAUSIBLE_SCRIPT`、`VITE_UMAMI_SCRIPT`、`VITE_UMAMI_WEBSITE_ID`、`VITE_GOOGLE_ANALYTICS_ID`、`VITE_CLARITY_PROJECT_ID` |
+| AI 功能 | `AI_CHAT_PROVIDER`、`OPENROUTER_API_KEY`、`OPENAI_API_KEY`、`AI_COMPAT_*`、`FAL_KEY` |
+
+留空的变量可以后续补上，编辑 `.env.production`，再运行 `pnpm run sync-worker-secrets`。
+
+### 由 CLI 决定的变量
+
+以下变量即使 export 了也不会生效，CLI 会丢弃 shell 里的值，写入自己的值：
+
+- `VITE_PAYMENT_PROVIDER`
+- `WAFFO_DEBUG`、`WAFFO_MERCHANT_ID`、`WAFFO_PRIVATE_KEY`、`WAFFO_STORE_ID`、
+  `VITE_WAFFO_PRODUCT_PRO_MONTHLY`、`VITE_WAFFO_PRODUCT_PRO_YEARLY`、
+  `VITE_WAFFO_PRODUCT_LIFETIME`
+
+（`WAFFO_MERCHANT_ID` 和 `WAFFO_PRIVATE_KEY` 在 `--payment waffo` 场景下仍然会从 shell 读取，作为创建 Waffo 资源用的凭证，CLI 真正决定的是写入生成项目里的值。）
+
+没有传 `--payment waffo` 时，`VITE_PAYMENT_PROVIDER` 会写成空值，也就是「有账号但没有收银台」的站点：`/pricing` 会跳转，`/settings/billing` 不生效，支付 webhook 也不会触发。这是首次部署后最常见的困惑来源，想开始收费时，在 `.env.production` 里设置支付商并重新部署即可。
+
 ### 非交互式 Waffo 配置
 
 在没有 TTY 的环境中，请传入 `--payment waffo`。不需要再提供门店名、产品名、价格或额外的 Waffo 环境变量，CLI 会直接使用模板内置定价。`--domain` 是可选的：
@@ -165,15 +197,17 @@ Waffo 仍可能要求在控制台完成商户验证、企业资料和收款账�
 9. 同步 Worker secrets。
 10. 验证公网部署地址。
 11. （仅 Waffo）确认部署路由可访问后注册 Webhook。
-12. 创建 GitHub 仓库。
+12. 创建 GitHub 仓库并设为 gh 默认仓库。
 13. 同步 GitHub Actions secrets。
 14. 提交代码并推送到 `main` 分支。
 
 生成的仓库使用 `origin` 指向新建的 GitHub 仓库，并使用 `upstream` 指向
-`https://github.com/MkFastHQ/mkfast-template.git`。由于模板历史会被保留，
-后续升级可以直接使用正常的 Git 合并，无需重新建立共同祖先。
+`https://github.com/akfc58/tanstack-template.git`。由于模板历史会被保留，
+后续升级可以直接使用正常的 Git 合并，无需重新建立共同祖先。CLI 还会在你的仓库上
+运行 `gh repo set-default`，因此 `gh run list`、`gh pr list`、`gh secret list`
+会作用在你的项目上，而不会通过 `upstream` 远程解析到模板仓库。
 
-生成的 `.env` 和 `.env.production` 会先完整复制模板的 `env.example` 清单，保证其中声明的变量一个不少；当前 shell 中已存在的同名变量会在此基础上填入，CLI 自动生成的 Cloudflare、D1、KV、base URL 和 auth secret 等值优先生效。
+生成的 `.env` 和 `.env.production` 会先完整复制模板的 `env.example` 清单，保证其中声明的变量一个不少；当前 shell 中已存在的同名变量会在此基础上填入，CLI 自动生成的 Cloudflare、D1、base URL 和 auth secret 等值优先生效。
 
 ## 链接
 

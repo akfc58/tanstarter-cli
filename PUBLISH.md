@@ -41,15 +41,17 @@ pnpm run build
 npm pack --dry-run
 ```
 
-Bump the version and push the generated commit and tag:
+- 发版前在本机跑一次 `pnpm run test:template`。它会真实 clone 模板并校验生成文件，是唯一能发现模板结构漂移（`env.example` 文件名、`preset.ts` 声明、`wrangler.jsonc` 字段）的检查。模板是 private 仓库，CI 拿不到它，这条只能在本地跑。
+
+`package.json` should already carry the version to release — bump it with
+`npm version patch` (or `minor`/`major` for larger changes) in its own commit
+beforehand if it doesn't yet. Tag that version and push it:
 
 ```bash
-npm version patch
+tag="v$(node -p "require('./package.json').version")"
+git tag -a -m "$tag" "$tag"
 git push --follow-tags
 ```
-
-Use `npm version minor` for larger user-facing additions and `npm version major`
-for breaking changes.
 
 The tag push triggers the publish workflow. Watch it with:
 

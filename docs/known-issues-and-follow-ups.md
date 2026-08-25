@@ -1,6 +1,6 @@
 # 已知问题与后续事项
 
-更新时间：2026-08-23
+更新时间：2026-08-25
 
 ## 低危遗留（已评估，暂不修复）
 
@@ -14,7 +14,7 @@ deploy 步骤执行时 workers.dev 地址尚未产生，`.env.production` 里 `V
 
 ## 待办
 
-### 缺少真实创建流程的端到端测试
+### 端到端只覆盖到文件生成
 
-单测全部在临时目录上跑单个函数，没有一条覆盖「clone 真实模板 → 生成文件」的链路。env 清单文件名不匹配（模板 `env.example` vs CLI 找 `.env.example`）能长期不被发现，正是因为测试 fixture 自己造了 `.env.example`，固化了错误假设。凡是依赖模板具体文件名/结构的逻辑（env 清单、`src/config/preset.ts`、`wrangler.jsonc`），都有同类风险。
+`pnpm run test:template` 会真实 clone 模板并校验生成的 `wrangler.jsonc` / `.env` / `preset.ts` / `package.json`，模板结构漂移能被它挡住。但真实创建 Cloudflare 资源、GitHub 仓库、部署与 `delete` 的完整链路仍需人工跑一次，命令见模板仓库 `docs/cli-contract.md` 的 K8 段。
 

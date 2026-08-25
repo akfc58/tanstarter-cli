@@ -96,3 +96,22 @@ function fitLine(line: string): string {
 function githubRepoToUrl(repo: string): string {
   return repo.includes('/') ? `https://github.com/${repo}` : repo;
 }
+
+/**
+ * Resources teardown cannot remove. Listing something in the "will delete"
+ * confirmation and then not deleting it is worse than not listing it at all,
+ * so anything that survives has to be named here, with the identifiers needed
+ * to find it again.
+ */
+export function formatManualCleanup(config: RuntimeConfig): string[] {
+  if (config.paymentProvider !== 'waffo') return [];
+
+  return [
+    `  Waffo store: ${config.waffoStoreId || '(none)'}`,
+    ...WAFFO_TEMPLATE_PRODUCTS.map(
+      (product) =>
+        `  Waffo ${product.name}: ${config.waffoProductIds[product.slot] || '(none)'}`
+    ),
+    `  Waffo webhook: ${config.waffoWebhookId || '(none)'}`,
+  ];
+}

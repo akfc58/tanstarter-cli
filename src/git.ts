@@ -59,6 +59,12 @@ export function initializeGit(targetDir: string): void {
 }
 
 export function createGithubRepo(config: RuntimeConfig): RuntimeConfig {
+  const nextConfig = connectGithubRepo(config);
+  setDefaultGithubRepo(nextConfig);
+  return nextConfig;
+}
+
+function connectGithubRepo(config: RuntimeConfig): RuntimeConfig {
   if (gitRemoteExists(config.targetDir, 'origin')) {
     console.log('Git remote origin already exists; skipping repo creation.');
     return {
@@ -93,6 +99,49 @@ export function createGithubRepo(config: RuntimeConfig): RuntimeConfig {
     ...config,
     githubRepoUrl: getGithubRepoWebUrl(repo, config.targetDir),
   };
+}
+
+/**
+ * `gh` treats any remote named `upstream` as the fork parent, so without this
+ * every `gh run list` / `gh pr list` / `gh secret list` in the generated
+ * project would report on the template repository instead. Writing
+ * `remote.origin.gh-resolved` keeps the upstream remote — the channel for
+ * pulling template fixes — while pointing gh at the project itself.
+ */
+function setDefaultGithubRepo(config: RuntimeConfig): void {
+  const nameWithOwner = getGithubRepoNameWithOwner(
+    config.githubRepo,
+    config.targetDir
+  );
+  runInheritedRaw(
+    'gh',
+    ['repo', 'set-default', nameWithOwner],
+    config.targetDir
+  );
+}
+
+function getGithubRepoNameWithOwner(repo: string, cwd: string): string {
+  const result = spawnSync(
+    'gh',
+    ['repo', 'view', repo, '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
+    {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }
+  );
+
+  if (
+    result.status !== 0 ||
+    typeof result.stdout !== 'string' ||
+    result.stdout.trim() === ''
+  ) {
+    throw new Error(
+      `Could not resolve the owner/name of GitHub repo ${repo}.`
+    );
+  }
+
+  return result.stdout.trim();
 }
 
 export function deleteGithubRepo(
