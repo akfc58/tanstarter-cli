@@ -37,6 +37,7 @@
     "check": "tsc --noEmit",
     "dev": "tsx src/index.ts",
     "test": "vitest run test/index.test.ts",
+    "test:template": "vitest run test/template-integration.test.ts",
     "prepublishOnly": "pnpm run build",
     "release:dry": "npm publish --dry-run",
     "release": "npm publish"
