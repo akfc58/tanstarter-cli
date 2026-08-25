@@ -48,7 +48,8 @@ npm pack --dry-run
 beforehand if it doesn't yet. Tag that version and push it:
 
 ```bash
-git tag "v$(node -p "require('./package.json').version")"
+tag="v$(node -p "require('./package.json').version")"
+git tag -a -m "$tag" "$tag"
 git push --follow-tags
 ```
 
