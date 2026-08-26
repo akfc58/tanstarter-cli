@@ -506,6 +506,57 @@ describe('wrangler config writing', () => {
 
     expect(() => writeWranglerConfig(config)).toThrow(/bucket_name/);
   });
+
+  /**
+   * Wrangler supports `env.<name>` blocks that redeclare bindings. None of the
+   * replace patterns carry `g`, so a second occurrence would keep the template
+   * author's database_id while every other check stayed green — the generated
+   * project would write into someone else's D1 on `--env production deploy`.
+   */
+  it('refuses a second declaration of a rewritten field', () => {
+    const config = createTestConfig();
+    fs.writeFileSync(
+      path.join(config.targetDir, 'wrangler.jsonc'),
+      WRANGLER_FIXTURE.replace(
+        /^}/m,
+        `  "env": {
+    "production": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "tanstack-template",
+          "database_id": "43858c0c-ed99-4260-91b1-04e2645f70bf"
+        }
+      ]
+    }
+  }
+}`
+      ),
+      'utf8'
+    );
+
+    expect(() => writeWranglerConfig(config)).toThrow(
+      /Found 2 matches for database_name/
+    );
+  });
+
+  /**
+   * The structural half of the same guard: an array can hold two entries while
+   * only one of them carries the field the replace pattern matches on.
+   */
+  it('refuses more than one binding per kind', () => {
+    const config = createTestConfig();
+    fs.writeFileSync(
+      path.join(config.targetDir, 'wrangler.jsonc'),
+      WRANGLER_FIXTURE.replace(
+        /("id": "0eb368f697bf439a8f3913d94561f0b3"\s*\n\s*\})/,
+        '$1,\n    { "binding": "CACHE2" }'
+      ),
+      'utf8'
+    );
+
+    expect(() => writeWranglerConfig(config)).toThrow(/exactly one of each/);
+  });
 });
 
 describe('command runner', () => {
@@ -1634,5 +1685,43 @@ describe('delete confirmation', () => {
     await expect(runCancelledDelete(['delete', 'YES'])).rejects.toThrow(
       'Delete cancelled.'
     );
+  });
+
+  /**
+   * The dangerous path, and the one the two gates above cannot cover: without
+   * a TTY there is no prompt to answer. This used to `return` early, which
+   * meant a pipe, a CI job or an agent shelling out deleted everything with
+   * zero confirmation — the gates were dead code exactly where they mattered
+   * most. Assert on the refusal itself, not just that nothing was deleted:
+   * a silently skipped delete would also leave the resources alone.
+   */
+  it('refuses to delete without a TTY', async () => {
+    const stdin = Object.assign(new PassThrough(), { isTTY: false });
+    const originalStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', {
+      value: stdin,
+      configurable: true,
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const config = createTestConfig();
+
+    try {
+      await expect(
+        deleteProject(
+          {
+            command: 'delete',
+            projectName: config.projectName,
+            targetDir: config.targetDir,
+            domain: '',
+            resume: false,
+          },
+          config
+        )
+      ).rejects.toThrow(/interactive terminal/);
+    } finally {
+      logSpy.mockRestore();
+      Object.defineProperty(process, 'stdin', originalStdin);
+      stdin.end();
+    }
   });
 });

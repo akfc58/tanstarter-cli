@@ -42,6 +42,14 @@ const VALUE_EDITS: Array<{
 /** The template's active routes block, key through closing bracket. */
 const ROUTES_BLOCK = /^ {2}"routes": \[[\s\S]*?^ {2}\],\n/m;
 
+/** Counts every occurrence, regardless of whether the pattern carries `g`. */
+function countMatches(content: string, pattern: RegExp): number {
+  const flags = pattern.flags.includes('g')
+    ? pattern.flags
+    : `${pattern.flags}g`;
+  return content.match(new RegExp(pattern.source, flags))?.length ?? 0;
+}
+
 /**
  * Rewrites the generated project's `wrangler.jsonc` field by field, in place.
  *
@@ -57,9 +65,21 @@ export function writeWranglerConfig(config: RuntimeConfig): void {
   let content = fs.readFileSync(wranglerPath, 'utf8');
 
   for (const edit of VALUE_EDITS) {
-    if (!edit.pattern.test(content)) {
+    // Exactly one, not at least one. None of these patterns carry `g`, so
+    // `String.replace` rewrites only the first match — and `assertGeneratedFields`
+    // below only reads the first array entry. A second occurrence (Wrangler
+    // supports `env.<name>` blocks that redeclare bindings) would therefore be
+    // left pointing at the template author's resources, silently and with every
+    // check still green. Refuse instead, and say the template moved.
+    const hits = countMatches(content, edit.pattern);
+    if (hits !== 1) {
       throw new Error(
-        [`Could not find ${edit.label} in wrangler.jsonc.`, DRIFT_HINT].join('\n')
+        [
+          hits === 0
+            ? `Could not find ${edit.label} in wrangler.jsonc.`
+            : `Found ${hits} matches for ${edit.label} in wrangler.jsonc, expected exactly one.`,
+          DRIFT_HINT,
+        ].join('\n')
       );
     }
     const value = JSON.stringify(edit.read(config));
@@ -126,6 +146,26 @@ function disabledRoutesBlock(): string {
  */
 function assertGeneratedFields(content: string, config: RuntimeConfig): void {
   const parsed = JSON.parse(stripJsonc(content)) as WranglerConfig;
+
+  // The structural half of the same guard as the match count above: the field
+  // checks below only ever read `[0]`, so a second binding of any kind would
+  // keep the template author's id and still pass.
+  const bindings: Array<[string, number]> = [
+    ['d1_databases', parsed.d1_databases?.length ?? 0],
+    ['r2_buckets', parsed.r2_buckets?.length ?? 0],
+    ['kv_namespaces', parsed.kv_namespaces?.length ?? 0],
+  ];
+  const wrongCount = bindings.filter(([, count]) => count !== 1);
+  if (wrongCount.length > 0) {
+    throw new Error(
+      [
+        `wrangler.jsonc must declare exactly one of each binding; found ${wrongCount
+          .map(([label, count]) => `${count} ${label}`)
+          .join(', ')}.`,
+        DRIFT_HINT,
+      ].join('\n')
+    );
+  }
   const expected: Record<string, string | undefined> = {
     name: config.projectName,
     'd1_databases[0].database_name': config.d1DatabaseName,

@@ -110,6 +110,18 @@ To delete the Cloudflare and GitHub resources created by the CLI, run:
 tanstarter delete my-app
 ```
 
+Run it from the directory **containing** the project, and from an interactive
+terminal. `delete` asks twice — first for the word `delete`, then for `yes` —
+and nothing it does can be undone, so it refuses to run when stdin is not a TTY
+(a pipe, a CI job, a program shelling out) rather than deleting unconfirmed.
+
+It leaves the project directory in place. `.env`, `.env.production` and
+`.tanstarter/` stay on disk with your `CLOUDFLARE_API_TOKEN` and
+`BETTER_AUTH_SECRET` in them — delete the directory yourself once you have
+confirmed the cloud resources are gone. Not before: `delete` reads
+`.tanstarter/state.json`, and without it the resources can only be removed by
+hand.
+
 ## Presets
 
 A preset decides which third-party accounts the generated site needs. The CLI writes it into the project's `src/config/preset.ts` as `ACTIVE_PRESET`; you can change tiers later by editing that one line and redeploying.
