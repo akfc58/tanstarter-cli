@@ -111,6 +111,14 @@ tanstarter create my-app --resume
 tanstarter delete my-app
 ```
 
+在**包含**该项目的目录里运行，且必须用交互式终端。`delete` 会问两次——先输 `delete`，
+再输 `yes`——它做的事没有一件能撤销，所以 stdin 不是 TTY 时（管道、CI、被别的程序
+调起）它会拒绝执行，而不是无确认就删。
+
+它不会删掉项目目录。`.env`、`.env.production` 与 `.tanstarter/` 会留在磁盘上，里面
+有你的 `CLOUDFLARE_API_TOKEN` 和 `BETTER_AUTH_SECRET`——确认云端资源已清空之后自己删
+目录。不要提前删：`delete` 依赖 `.tanstarter/state.json`，它一丢，那些资源就只能手工清理。
+
 ## 档位
 
 档位决定生成的站点需要开通哪些第三方账号。CLI 会把它写进项目的 `src/config/preset.ts`（`ACTIVE_PRESET` 常量）；之后想换档位，改这一行再重新部署即可。

@@ -111,7 +111,20 @@ async function confirmDelete(
     for (const line of manualCleanup) console.log(line);
   }
 
-  if (!process.stdin.isTTY) return;
+  // Without a TTY the two gates below cannot run — there is no prompt to
+  // answer. Returning here would delete everything with zero confirmation,
+  // which is the exact opposite of what the gates exist for, and a pipe, a CI
+  // job or an agent shelling out is the common case rather than the exception.
+  // Nothing this command does can be undone, so refuse instead.
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      [
+        'Delete needs an interactive terminal.',
+        'stdin is not a TTY, so the two confirmations cannot be answered.',
+        'Run tanstarter delete directly in a terminal.',
+      ].join('\n')
+    );
+  }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
