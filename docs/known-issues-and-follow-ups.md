@@ -1,6 +1,6 @@
 # 已知问题与后续事项
 
-更新时间：2026-08-26
+更新时间：2026-10-22
 
 ## 低危遗留（已评估，暂不修复）
 
@@ -27,6 +27,19 @@ deploy 步骤执行时 workers.dev 地址尚未产生，`.env.production` 里 `V
 **已裁决不修**：触发前提罕见，且模板仓库 `docs/cli-contract.md` 的 K6 已写明
 「拆除后必须到 dashboard 肉眼确认，不要信终端输出」。
 
+### `.env` 键集断言是单向的
+
+`test/template-integration.test.ts` 只查「模板 `env.example` 声明的键 ⊆ 生成的 `.env` 键」，反向不查。
+CLI 自己追加、模板从未声明的键不会被发现，却会被 `sync-github-secrets` 与 `sync-worker-secrets` 推成 secret。
+2026-10-22 核对：`src/env.ts` 的 `WAFFO_ENV_KEYS` 目前都已在模板 `env.example` 中声明，暂无实际漂移。
+要补就在同一条用例里加反向断言（生成文件的键 ⊆ 模板声明的键）。
+
+### 自定义域拆除后的证书残留
+
+删除 Worker 时 Cloudflare 会自己清掉 Custom Domain 的绑定与 DNS 记录（2026-08-26 实测，DoH 查询返回 NXDOMAIN），
+所以 `delete.ts` 不调 DELETE `workers/domains` 是对的。但 Cloudflare 文档说明 **Advanced Certificate 不随
+Custom Domain 删除**。用了 Advanced Certificate 或二级以上子域的项目，拆除后要去 SSL/TLS → Edge Certificates 看一眼。
+
 ### 其他已裁决不修
 
 | 条目 | 结论 |
@@ -45,5 +58,6 @@ deploy 步骤执行时 workers.dev 地址尚未产生，`.env.production` 里 `V
   `cloudflareApiToken` 与 `waffoPrivateKey` 置空，读取时从 `process.env` 还原。
   2026-08-25 三档实跑逐个确认磁盘上均为 `""`。
   真正的明文残留在 `.env` / `.env.production`，`delete` 不删它们——README 已补说明。
+- ~~非交互式调用跳过两道确认直接删除~~ —— PR #8 已改为非 TTY 拒绝删除。
 - ~~端到端只覆盖到文件生成~~ —— 2026-08-25 完成三档（full / account / free）
   真实创建、部署、拆除的完整链路人工验收。结论见模板仓库 `docs/cli-contract.md`。
