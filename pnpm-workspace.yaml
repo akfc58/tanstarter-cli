@@ -1,0 +1,7 @@
+# 只放 pnpm 设置，不是 monorepo。
+
+# pnpm 11 起未审查的依赖构建脚本会让安装直接失败（strictDepBuilds 默认 true）。
+# 下列包在 pnpm 10 下本就不运行构建脚本，这里显式写 false，保持原行为。
+# 新依赖带构建脚本时安装会报 ERR_PNPM_IGNORED_BUILDS，审查后再加到这里。
+allowBuilds:
+  esbuild: false
