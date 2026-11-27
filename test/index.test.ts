@@ -23,7 +23,11 @@ import { deleteProject } from '../src/delete.ts';
 import { ensureEnvFiles, formatEnvValue } from '../src/env.ts';
 import { getPublicBaseUrl, verifyPublicDeployment } from '../src/deployment.ts';
 import { initializeGit } from '../src/git.ts';
-import { isCliEntrypoint } from '../src/index.ts';
+import {
+  buildDeployPnpmArgs,
+  buildSyncGithubSecretsPnpmArgs,
+  isCliEntrypoint,
+} from '../src/index.ts';
 import { formatManualCleanup } from '../src/output.ts';
 import { getInstallPlan } from '../src/preflight.ts';
 import { configureSetup, formatDefaultGithubRepo } from '../src/prompt.ts';
@@ -1722,6 +1726,68 @@ describe('delete confirmation', () => {
       logSpy.mockRestore();
       Object.defineProperty(process, 'stdin', originalStdin);
       stdin.end();
+    }
+  });
+});
+
+describe('pnpm script argument forwarding', () => {
+  it('passes --keep-vars and --repo without a literal -- separator', () => {
+    expect(buildDeployPnpmArgs()).toEqual(['run', 'deploy', '--keep-vars']);
+    expect(buildSyncGithubSecretsPnpmArgs('akfc58/demo-app')).toEqual([
+      'run',
+      'sync-github-secrets',
+      '--repo',
+      'akfc58/demo-app',
+    ]);
+    expect(buildSyncGithubSecretsPnpmArgs('demo-app')).toEqual([
+      'run',
+      'sync-github-secrets',
+    ]);
+  });
+
+  it('forwards --keep-vars directly to the underlying script under pnpm', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tanstarter-pnpm-args-'));
+    try {
+      const probeScript = path.join(dir, 'probe.mjs');
+      fs.writeFileSync(
+        probeScript,
+        'console.log(JSON.stringify(process.argv.slice(2)));\n',
+        'utf8'
+      );
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({
+          name: 'pnpm-args-probe',
+          private: true,
+          scripts: {
+            deploy: 'node probe.mjs',
+            'sync-github-secrets': 'node probe.mjs',
+          },
+        }),
+        'utf8'
+      );
+
+      const deployOutput = execFileSync('pnpm', buildDeployPnpmArgs(), {
+        cwd: dir,
+        encoding: 'utf8',
+      });
+      expect(deployOutput.trim().split('\n').at(-1)).toBe(
+        JSON.stringify(['--keep-vars'])
+      );
+
+      const secretsOutput = execFileSync(
+        'pnpm',
+        buildSyncGithubSecretsPnpmArgs('akfc58/demo-app'),
+        {
+          cwd: dir,
+          encoding: 'utf8',
+        }
+      );
+      expect(secretsOutput.trim().split('\n').at(-1)).toBe(
+        JSON.stringify(['--repo', 'akfc58/demo-app'])
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

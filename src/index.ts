@@ -219,7 +219,7 @@ async function main(): Promise<void> {
         ensureEnvFiles(state.config);
         const result = runCommandAndEcho(
           'pnpm',
-          ['run', 'deploy', '--', '--keep-vars'],
+          buildDeployPnpmArgs(),
           state.config
         );
         const deploymentUrl = parseDeploymentUrl(
@@ -241,7 +241,7 @@ async function main(): Promise<void> {
             );
             runCommandAndEcho(
               'pnpm',
-              ['run', 'deploy', '--', '--keep-vars'],
+              buildDeployPnpmArgs(),
               state.config
             );
           }
@@ -307,11 +307,11 @@ async function main(): Promise<void> {
       id: 'sync-github-secrets',
       title: 'Sync GitHub Actions secrets',
       run: () => {
-        const args = ['run', 'sync-github-secrets'];
-        if (state.config.githubRepo.includes('/')) {
-          args.push('--', '--repo', state.config.githubRepo);
-        }
-        runInherited('pnpm', args, state.config);
+        runInherited(
+          'pnpm',
+          buildSyncGithubSecretsPnpmArgs(state.config.githubRepo),
+          state.config
+        );
       },
     },
     {
@@ -390,6 +390,24 @@ if (isCliEntrypoint(process.argv[1], import.meta.url)) {
     }
     process.exit(1);
   });
+}
+
+/**
+ * pnpm forwards `--` literally to package scripts, which turns
+ * `pnpm run deploy -- --keep-vars` into `wrangler deploy -- --keep-vars` and
+ * makes Wrangler stop parsing `--keep-vars` as an option. Pass script flags
+ * directly without `--`.
+ */
+export function buildDeployPnpmArgs(): string[] {
+  return ['run', 'deploy', '--keep-vars'];
+}
+
+export function buildSyncGithubSecretsPnpmArgs(githubRepo: string): string[] {
+  const args = ['run', 'sync-github-secrets'];
+  if (githubRepo.includes('/')) {
+    args.push('--repo', githubRepo);
+  }
+  return args;
 }
 
 export function isCliEntrypoint(
